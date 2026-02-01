@@ -1,4 +1,5 @@
 import requests
+import uuid
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import os
@@ -28,6 +29,14 @@ def scrape_and_send_to_n8n(urls, webhook_url, ca_cert_path=None, excluded_domain
         excluded_domains_path (str): Path to exclusions list (JSON).
     """
     excluded_domains = load_excluded_domains_json(excluded_domains_path) if excluded_domains_path else set()
+    tags = input("Tags for this batch (comma-separated, optional): ").strip()
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    source_type = "web"
+    confidence = 0.8
+    related_entities = input("Related entities for this batch (comma-separated, optional): ").strip()
+    related_list = [t.strip() for t in related_entities.split(",") if t.strip()] if related_entities else []
+    user_agent = "HannaWebScraper/1.0 (+https://botinfo.hivenet.dev/)"
+    headers = {"User-Agent": user_agent}
     for url in urls:
         domain = urlparse(url).netloc.lower()
         if any(domain == ex or domain.endswith('.' + ex) for ex in excluded_domains):
@@ -35,12 +44,23 @@ def scrape_and_send_to_n8n(urls, webhook_url, ca_cert_path=None, excluded_domain
             continue
         try:
             print(f"Scraping: {url}")
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=10, headers=headers)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
             text = soup.get_text(separator=" ", strip=True)
+            title = soup.title.string.strip() if soup.title and soup.title.string else url
             print(f"Scraped text (first 500 chars):\n{text[:500]}\n---")
-            payload = {"fact": text}
+            fact_id = str(uuid.uuid4())
+            payload = {
+                "id": fact_id,
+                "text": text,
+                "url": url,
+                "title": title,
+                "source_type": source_type,
+                "confidence": confidence,
+                "tags": tag_list,
+                "related_entities": related_list
+            }
             verify = ca_cert_path if ca_cert_path else True
             print(f"Sending payload to n8n webhook: {webhook_url}")
             r = requests.post(webhook_url, json=payload, timeout=10, verify=verify)

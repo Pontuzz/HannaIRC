@@ -23,6 +23,75 @@ The official project website for this repository is hosted at [https://botinfo.h
 2. Run the script to submit new knowledge to Hanna’s database.
 3. Hanna will use this knowledge in real time to answer questions in chat.
 
+## Usage Examples
+
+### Example 1: Running the Web Scraper with Tags and Related Entities
+
+```sh
+# Edit source/scrape_to_n8n.py to set your URLs and webhook
+python source/scrape_to_n8n.py
+
+# When prompted:
+# Tags for this batch (comma-separated, optional): anime, media, shoko
+# Related entities for this batch (comma-separated, optional): Shoko, Anime
+```
+
+### Example 2: Manual Fact Entry with All Fields
+
+```sh
+python source/manual_fact_to_n8n.py
+
+# When prompted:
+# Source URL (or leave blank): https://shokoanime.com
+# Title (optional): Shoko Anime Project
+# Fact text (or 'quit' to exit): Shoko is a cross-platform anime management system...
+# Tags for this fact (comma-separated, optional): anime, media, shoko
+# Source type (default: manual): manual
+# Confidence (0-1, default: 1.0): 1.0
+# Related entities (comma-separated, optional): Shoko, Anime
+```
+
+## Script Data Fields (2026 Update)
+
+All ingestion scripts now support the following fields for each fact:
+
+- `id`: Unique identifier (auto-generated)
+- `title`: Short title or headline (auto or manual)
+- `fact`: The main text content
+- `url`: Source URL (if available)
+- `tags`: List of tags (comma-separated input)
+- `source_type`: e.g., "web" (scraping) or "manual" (manual entry)
+- `confidence`: Numeric score (default 0.8 for web, 1.0 for manual, or user input)
+- `related_entities`: List of related people, topics, or keywords (manual input for now)
+
+### Example Payload Sent to n8n
+
+```json
+{
+  "id": "b1e2c3d4-5678-1234-9abc-1234567890ab",
+  "title": "Shoko Anime Project",
+  "fact": "Shoko is a cross-platform anime management system...",
+  "url": "https://shokoanime.com",
+  "tags": ["anime", "media", "shoko"],
+  "source_type": "web",
+  "confidence": 0.8,
+  "related_entities": ["Shoko", "Anime"]
+}
+```
+
+## Public vs Private Scripts
+
+- Scripts in `/source` are public and safe to share (no secrets, no credentials).
+- Scripts in the root directory may contain private configuration and should not be published.
+
+## Manual Fact Entry
+
+You can also use `source/manual_fact_to_n8n.py` to enter facts by hand. This script will prompt for all fields above, including tags, title, source type, confidence, and related entities.
+
+## Changelog
+
+- **2026-01-31:** Added support for title, source_type, confidence, related_entities, and id fields in all ingestion scripts. Updated .gitignore to allow `/source/*.py` and ignore root-level scripts.
+
 ## User-Agent
 
 ```

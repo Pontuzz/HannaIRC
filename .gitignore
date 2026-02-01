@@ -63,6 +63,8 @@ data/
 # Ignore CNAME if not custom domain
 # CNAME
 
-# Do not track Python files in root, but allow in Scripts/
+# Do not track Python files in root, but allow in /source/
 /*.py
-!Scripts/*.py
+!/source/*.py
+# Ignore /script directory if it exists
+script/
