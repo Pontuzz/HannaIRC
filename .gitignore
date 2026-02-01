@@ -1,0 +1,85 @@
+# Ignore Python cache and environment files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+ENV/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore log files
+*.log
+
+# Ignore sensitive files
+*.env
+*.key
+*.pem
+*.crt
+
+# Ignore node modules (if any JS)
+node_modules/
+
+# Ignore IDE/editor files
+.vscode/
+.idea/
+*.swp
+
+# Ignore build/output folders
+build/
+dist/
+
+# Ignore temp files
+*.tmp
+*.bak
+~$*
+
+# Ignore coverage reports
+htmlcov/
+.coverage
+coverage.xml
+
+# Ignore test output
+junit.xml
+
+# Ignore Docker files
+*.pid
+*.pid.lock
+# Ignore production compose files (use .example version as template)
+docker-compose.yml
+docker-compose.yaml
+# Allow example files for documentation
+!docs/docker-compose.example.yml
+
+# Ignore SSL certificates and keys
+certs/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Production scripts with credentials (never push to GitHub)
+# Templates with placeholders exist in docs/scrapers/ for reference
+/scrape_to_n8n.py
+/manual_fact_to_n8n.py
+/anime_lookup.py
+/gen_embedding_and_insert.py
+/addfact.py
+
+# Ignore backup files
+*.old
+*.orig
+
+# Ignore private data
+secrets.json
+
+# Ignore web scraper output
+output/
+data/
+
+# Ignore CNAME if not custom domain
+# CNAME

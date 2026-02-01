@@ -1,0 +1,188 @@
+{
+  "name": "HannaIRC - Live IRC Bot with Knowledge Retrieval",
+  "description": "Primary IRC interaction workflow. Receives IRC events, maintains conversation memory via PostgreSQL, and uses LLM agent with Qdrant knowledge retrieval to generate responses. Supports command routing (!a anime, !w web, !c calc) with scalable architecture.",
+  "workflow_flow": [
+    "IRC Event Trigger (webhook from IRC bot)",
+    "→ Normalize Event Data (IRC SET node)",
+    "→ Command Detector (regex patterns: !a, !w, !c)",
+    "→ Is Command? (IF node - branches on isCommand)",
+    "  ├─ TRUE: Commands Switch (by message content)",
+    "  │        ├─ Contains '!a': Prepare Anime Query → Mini Hanna → Reply",
+    "  │        └─ Contains '!w': (web search prep) → Mini Hanna → Reply",
+    "  └─ FALSE: EventType Switch (by eventType field)",
+    "           ├─ privmsg: Privmsg Auth Check (auth required) → Mini Hanna → Reply",
+    "           ├─ mention: Botfilter (check messageTags.bot)",
+    "           │           ├─ TRUE (is bot): Typing Complete (block)",
+    "           │           └─ FALSE (human): Mentions (typing) → Mini Hanna → Reply",
+    "           ├─ quit/mode/tagmsg: SensoryOrgans (logging only)",
+    "           └─ (other): SensoryOrgans (logging only)"
+  ],
+  "trigger": {
+    "type": "webhook",
+    "source": "IRC Bot (n8n-nodes-hanna.hannaBotTrigger)",
+    "events": ["privmsg", "mention", "notice", "join", "part", "quit", "mode", "kick"],
+    "example_payload": {
+      "sender": "username",
+      "target": "#channel-name",
+      "message": "user message content",
+      "eventType": "privmsg",
+      "messageTags": {
+        "msgid": "unique-message-id"
+      }
+    }
+  },
+  "data_flow": {
+    "input": "Raw IRC event from IRC bot webhook",
+    "normalization": "Extract sender, message, target, eventType via IRC SET",
+    "command_detection": "Regex patterns for !a, !w, !c commands",
+    "routing": "By isCommand flag, then commandType or eventType",
+    "context": "PostgreSQL Chat Memory retrieves conversation history",
+    "llm_processing": "GPT-4o-mini agent with available tools",
+    "output": "IRC response via Hanna Bot"
+  },
+  "command_routing": {
+    "detector_node": {
+      "type": "Code node (JavaScript)",
+      "name": "Command Detector",
+      "description": "Extracts command patterns using regex, preserves all original fields",
+      "patterns": {
+        "anime": "^!a\\s+(.+)$",
+        "web": "^!w\\s+(.+)$",
+        "calc": "^!c\\s+(.+)$"
+      },
+      "output_fields": {
+        "isCommand": "boolean",
+        "commandType": "string | null",
+        "argument": "string | null"
+      },
+      "critical_note": "Must use spread operator (...$json) to preserve sender, target, eventType, sessionId"
+    },
+    "branching_logic": {
+      "is_command_node": "IF node on $json.isCommand",
+      "true_branch": "Commands Switch - routes by commandType",
+      "false_branch": "EventType Switch - routes by eventType"
+    },
+    "command_handlers": {
+      "anime": {
+        "trigger": "!a animename",
+        "example": "!a Demon Slayer",
+        "prep_node": "Prepare Anime Query (Set node)",
+        "agent_tool": "Shoko Search",
+        "returns": "Anime series metadata with links"
+      },
+      "web": {
+        "trigger": "!w search query",
+        "example": "!w python asyncio tutorial",
+        "prep_node": "Prepare Web Query (Set node)",
+        "agent_tool": "SerpAPI",
+        "returns": "Web search results"
+      },
+      "calc": {
+        "trigger": "!c expression",
+        "example": "!c 2+2*3",
+        "prep_node": "Prepare Calc Query (Set node)",
+        "agent_tool": "Calculator",
+        "returns": "Numeric result"
+      }
+    },
+    "event_handlers": {
+      "mention": "Typing indicator → Mini Hanna agent",
+      "privmsg": "Auth check (if configured) → Mini Hanna agent",
+      "quit": "SensoryOrgans (informational logging)",
+      "mode": "SensoryOrgans (mode change logging)",
+      "tagmsg": "SensoryOrgans (tag logging)"
+    }
+  },
+  "agent_tools": {
+    "qdrant_vector_retrieve": {
+      "name": "Qdrant Vector Retrieve",
+      "description": "Semantic search over knowledge base",
+      "collection": "hannabot_knowledge",
+      "embedding_model": "text-embedding-ada-002",
+      "vector_dimension": 1536,
+      "usage": "Find relevant facts from knowledge base"
+    },
+    "shoko_search": {
+      "name": "Shoko Search",
+      "description": "Query anime metadata server",
+      "endpoint": "http://[your-server]:8112/api/v3/Series/AniDB/Search",
+      "usage": "Anime title lookups"
+    },
+    "serpapi": {
+      "name": "SerpAPI",
+      "description": "Web search engine",
+      "usage": "General web searches not in knowledge base"
+    },
+    "calculator": {
+      "name": "Calculator",
+      "description": "Mathematical operations",
+      "usage": "Math expressions and calculations"
+    },
+    "irc_tools": {
+      "message": "Send IRC message",
+      "notice": "Send IRC notice",
+      "join": "Join IRC channel",
+      "rawcmd": "Send raw IRC command"
+    }
+  },
+  "memory_configuration": {
+    "type": "PostgreSQL Chat Memory",
+    "node_type": "memoryPostgresChat",
+    "table": "n8n_chat_histories (auto-created)",
+    "session_key": "Unique per conversation (e.g., sender_target)",
+    "message_storage": "LangChain message objects",
+    "embedding_model": "text-embedding-ada-002",
+    "note": "Shared across HannaLearns, TeachHanna, HannaIRC"
+  },
+  "response_generation": {
+    "model": "gpt-4o-mini",
+    "agent_name": "Mini Hanna",
+    "system_prompt": "You are Mini Hanna, IRC bot assistant. Use Qdrant first for anime/known facts, SerpAPI for web searches, Calculator for math. Respond naturally in 1 line, max 400 chars, plain text only.",
+    "constraints": [
+      "Max 400 characters",
+      "Plain text (no markdown or formatting)",
+      "Natural conversational tone",
+      "Prioritize Qdrant knowledge base",
+      "Maintain conversation context"
+    ]
+  },
+  "setup_requirements": {
+    "n8n": "Self-hosted or cloud instance",
+    "credentials": {
+      "irc_bot": "Hanna Bot auth token",
+      "postgresql": "n8n database connection",
+      "openai": "OpenAI API key",
+      "qdrant": "Qdrant API key and endpoint",
+      "serpapi": "SerpAPI key (optional)",
+      "shoko_server": "Local Shoko Server endpoint (optional)"
+    },
+    "resources": {
+      "postgresql": "n8n_chat_histories table (auto-created)",
+      "qdrant": "hannabot_knowledge collection (create if needed)",
+      "irc": "IRC channel to monitor"
+    }
+  },
+  "configuration_notes": {
+    "session_key_consistency": "Must match across workflows for shared memory",
+    "timezone": "Configure for accurate timestamps",
+    "auth_users": "Set in Privmsg Auth Check node for restricted operations",
+    "knowledge_base": "Qdrant retrieves via semantic similarity - quality depends on facts injected by TeachHanna/HannaLearns",
+    "expanding_commands": "Add pattern to Command Detector regex, create Prepare node, add to Commands Switch"
+  },
+  "workflow_integration": {
+    "teachhanna_integration": "Both workflows write to hannabot_knowledge Qdrant collection",
+    "hannalearns_integration": "HannaLearns extracts facts from IRC chat daily, stores in same Qdrant collection",
+    "data_pipeline": "IRC chat → PostgreSQL n8n_chat_histories → HannaLearns (daily) → facts extracted → Qdrant → HannaIRC uses them"
+  },
+  "testing_checklist": [
+    "Command Detector correctly identifies patterns",
+    "Is Command? routing (TRUE/FALSE) works correctly",
+    "Anime command (!a title) returns metadata",
+    "Web command (!w query) returns search results",
+    "Calc command (!c expr) returns result",
+    "Regular messages flow normally",
+    "Mentions trigger with typing indicator",
+    "Conversation context persists across messages",
+    "All original fields preserved through pipeline"
+  ]
+}

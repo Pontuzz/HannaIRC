@@ -1,0 +1,85 @@
+{
+  "name": "HannaLearns - Automatic Learning from Chat Corrections",
+  "description": "Scheduled workflow that runs daily at 2 AM. Reads recent chat history from PostgreSQL, extracts corrections/facts with LLM, and injects into knowledge base via Qdrant.",
+  "workflow_flow": [
+    "Schedule Trigger (daily at 02:00 UTC)",
+    "↓",
+    "Read Chat Memory (Query PostgreSQL last 50 messages)",
+    "↓",
+    "Extract Corrections (LLM analyzes: corrections, facts, confidence)",
+    "↓",
+    "Format Facts (Maps to unified schema)",
+    "↓",
+    "Upsert to Qdrant (with embeddings)"
+  ],
+  "schedule": {
+    "trigger": "daily",
+    "time": "02:00 UTC (configurable)",
+    "timezone": "Europe/Stockholm"
+  },
+  "data_sources": {
+    "postgres_table": "n8n_chat_histories",
+    "session_key": "your-session-key-here",
+    "query_limit": 50,
+    "order": "Most recent first (DESC)"
+  },
+  "llm_extraction": {
+    "model": "gpt-4o-mini",
+    "task": "Extract corrections and facts from IRC chat history",
+    "looks_for": [
+      "Corrections (wrong info being corrected)",
+      "Facts (useful info worth remembering)",
+      "User attributions (who said it)"
+    ],
+    "output_fields": [
+      "text: main fact or correction",
+      "sourceUser: who said it",
+      "confidence: 0-1 (only >0.7 retained)"
+    ]
+  },
+  "unified_schema_mapping": {
+    "text": "Extracted fact/correction",
+    "source_type": "chat_correction (fixed)",
+    "confidence": "0-1 from LLM extraction",
+    "timestamp": "Current ISO 8601 UTC",
+    "sourceUser": "Username from chat (or null)",
+    "url": "null (no source URL)",
+    "title": "null (auto-derived from text)",
+    "tags": "From LLM or defaults",
+    "related_entities": "From LLM extraction"
+  },
+  "nodes_overview": {
+    "schedule_trigger": "Cron-like trigger at configured time daily",
+    "postgres_reader": "Queries chat_histories table for recent messages",
+    "llm_extractor": "GPT-4o-mini agent: analyzes text, extracts learning value",
+    "fact_formatter": "Set node: maps extracted data to unified schema",
+    "qdrant_embedder": "Generates embeddings and stores in vector db"
+  },
+  "setup_requirements": {
+    "postgres": "Connection to n8n database with chat_histories table populated",
+    "session_key": "Your session identifier (e.g., 'username_channel')",
+    "openai_api": "gpt-4o-mini model access",
+    "qdrant": "Connected vector store with collection ready",
+    "timezone": "Set to your timezone for consistent scheduling"
+  },
+  "example_extraction": {
+    "input_chat": [
+      "pontuzz: Jujutsu Kaisen has 48 episodes",
+      "user: Actually I think it's 50",
+      "pontuzz: You're right, season 2 made it 50 total"
+    ],
+    "extracted_facts": [
+      {
+        "text": "Jujutsu Kaisen has 50 total episodes (seasons 1-2)",
+        "sourceUser": "pontuzz",
+        "confidence": 0.9
+      }
+    ]
+  },
+  "notes": {
+    "learning_disabled": "Set active=false to disable daily learning",
+    "manual_trigger": "Can be triggered manually in n8n UI for testing",
+    "efficiency": "Only processes messages with learning value (>0.7 confidence)",
+    "privacy": "Only reads local chat history, no external data"
+  }
+}

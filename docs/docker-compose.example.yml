@@ -1,0 +1,219 @@
+version: "3.8"
+
+# HannaIRC n8n Deployment
+# 
+# This is an anonymized example. Edit to match your environment:
+# 1. Replace CHANGE_ME_* with your actual values
+# 2. Set up SSL certificates in ./certs/
+# 3. Adjust domain names, ports, and paths
+# 4. For production: use .env file for sensitive values
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: n8n_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: CHANGE_ME_STRONG_PASSWORD
+      POSTGRES_DB: n8n
+    volumes:
+      - n8n_postgres_data:/var/lib/postgresql/data
+    networks:
+      - n8n_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ./certs:/qdrant/certs:ro
+    expose:
+      - "6333"
+      - "6334"
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      QDRANT__SERVICE__API_TLS_CERT: /qdrant/certs/your_cert.pem
+      QDRANT__SERVICE__API_TLS_KEY: /qdrant/certs/your_key.key
+    networks:
+      - n8n_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8n-custom:latest
+    # or use: image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: CHANGE_ME_STRONG_PASSWORD
+      
+      # n8n Configuration
+      N8N_HOST: n8n.example.com
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.example.com
+      NODE_ENV: production
+      TZ: UTC
+      
+      # Security
+      N8N_ENCRYPTION_KEY: CHANGE_ME_ENCRYPTION_KEY_32_CHARS_MIN
+    expose:
+      - "5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./local-files:/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - n8n_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  nginx:
+    image: nginx:stable
+    container_name: n8n_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - n8n
+      - qdrant
+    networks:
+      - n8n_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  hanna-bot:
+    image: hanna-bot:latest
+    container_name: hanna-bot
+    restart: always
+    environment:
+      # IRC Server Configuration
+      IRC_ADDR: irc.libera.chat:6697
+      IRC_TLS: "1"
+      IRC_NICK: HannaBot
+      IRC_USER: HannaBot
+      IRC_NAME: Hanna IRC Bot
+      AUTOJOIN: "#channel"
+      
+      # SASL Authentication
+      SASL_USER: CHANGE_ME_BOT_USERNAME
+      SASL_PASS: CHANGE_ME_BOT_PASSWORD
+      
+      # Bot Configuration
+      BOT_MASTER_NICK: your_nick
+      BOT_MASTER_HOSTMASK: "your.hostmask"
+      
+      # API Configuration
+      API_ADDR: ":8080"
+      API_TOKEN: CHANGE_ME_API_TOKEN
+      
+      # n8n Webhook
+      N8N_WEBHOOK: http://n8n:5678/webhook/CHANGE_ME_WEBHOOK_ID
+      
+      # Trigger Configuration (JSON)
+      TRIGGER_CONFIG: >
+        {
+          "endpoints": {
+            "mentions": {
+              "url": "http://n8n:5678/webhook/CHANGE_ME_WEBHOOK_ID",
+              "token": "CHANGE_ME_API_TOKEN",
+              "events": ["mention"],
+              "channels": ["#channel"]
+            },
+            "dms": {
+              "url": "http://n8n:5678/webhook/CHANGE_ME_WEBHOOK_ID",
+              "token": "CHANGE_ME_API_TOKEN",
+              "events": ["privmsg"],
+              "channels": []
+            },
+            "all_events": {
+              "url": "http://n8n:5678/webhook/CHANGE_ME_WEBHOOK_ID",
+              "token": "CHANGE_ME_API_TOKEN",
+              "events": ["*"],
+              "channels": []
+            }
+          }
+        }
+    expose:
+      - "8080"
+    networks:
+      - n8n_network
+    depends_on:
+      n8n:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  n8n_data:
+  n8n_postgres_data:
+  qdrant_data:
+
+networks:
+  n8n_network:
+    driver: bridge
+
+# Production Notes:
+# ================
+# 1. Store sensitive values in .env file (add to .gitignore):
+#    - POSTGRES_PASSWORD
+#    - N8N_ENCRYPTION_KEY
+#    - API_TOKEN
+#    - SASL_PASS
+#
+# 2. Generate secure passwords:
+#    openssl rand -base64 32
+#
+# 3. Set up SSL certificates:
+#    - Place in ./certs/ directory
+#    - Update paths in nginx.conf and qdrant environment
+#
+# 4. Configure nginx.conf for your domain
+#
+# 5. Import workflows via n8n UI:
+#    - Menu → Workflows → Import
+#    - Select from ./docs/examples/
+#
+# 6. Set up n8n credentials:
+#    - OpenAI API key
+#    - SerpAPI key
+#    - Qdrant API connection
+#    - PostgreSQL connection
+#
+# 7. Run with .env file:
+#    docker-compose --env-file .env up -d

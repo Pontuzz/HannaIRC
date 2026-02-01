@@ -1,0 +1,14 @@
+[
+  {
+    "domain": "example.com",
+    "reason": "Site owner requested exclusion via email",
+    "requested_by": "owner@example.com",
+    "date_added": "2026-01-30"
+  },
+  {
+    "domain": "anotherdomain.org",
+    "reason": "Sensitive content",
+    "requested_by": "admin@anotherdomain.org",
+    "date_added": "2026-01-30"
+  }
+]

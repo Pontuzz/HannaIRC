@@ -1,0 +1,38 @@
+{
+  "name": "TeachHanna - Webhook Receiver & Vector Store Injector",
+  "description": "Receives facts from ingestion scripts via webhook, extracts unified schema fields, and injects into Qdrant vector store for knowledge base.",
+  "workflow_flow": [
+    "Webhook (receives POST with unified schema)",
+    "↓",
+    "Extract Schema Fields (maps json.body fields)",
+    "↓",
+    "Generate Embeddings (OpenAI text-embedding-ada-002)",
+    "↓",
+    "Upsert to Qdrant (stores vector + metadata)"
+  ],
+  "webhook_path": "your-webhook-id-here",
+  "webhook_method": "POST",
+  "expected_payload": {
+    "text": "Main fact content (required)",
+    "source_type": "web | manual | chat_correction | anidb_metadata",
+    "confidence": "0-1 numeric (0.8 for web, 1.0 for manual, 0.95 for anidb)",
+    "timestamp": "ISO 8601 UTC string",
+    "sourceUser": "Username string or null",
+    "url": "Source URL string or null",
+    "title": "Human-readable title string",
+    "tags": ["array", "of", "tags"],
+    "related_entities": ["array", "of", "entities"]
+  },
+  "example_curl": "curl -X POST http://your-n8n-instance.com/webhook/your-webhook-id -H 'Content-Type: application/json' -d '{\"text\": \"Jujutsu Kaisen is an anime series\", \"source_type\": \"web\", \"confidence\": 0.9, \"timestamp\": \"2026-02-01T12:00:00Z\", \"sourceUser\": null, \"url\": \"https://example.com\", \"title\": \"Anime Reference\", \"tags\": [\"anime\", \"media\"], \"related_entities\": [\"JJK\"]}'",
+  "nodes_overview": {
+    "webhook": "HTTP POST receiver - entry point for all ingestion scripts",
+    "field_extractor": "Set node - maps incoming JSON to unified schema fields",
+    "embeddings": "Generates vector embeddings using OpenAI's text-embedding-ada-002",
+    "qdrant_store": "Upserts vector + metadata to Qdrant knowledge collection"
+  },
+  "setup_requirements": {
+    "qdrant_collection": "Create collection (e.g., 'your-knowledge-collection') with vector size 1536 (ada-002)",
+    "openai_api": "text-embedding-ada-002 model, valid API key",
+    "qdrant_api": "Qdrant instance with accessible HTTP endpoint"
+  }
+}

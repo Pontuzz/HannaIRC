@@ -1,0 +1,212 @@
+# Nginx Reverse Proxy Configuration for HannaIRC
+# 
+# This is an anonymized example showing how to:
+# 1. Proxy n8n workflows on n8n.example.com
+# 2. Proxy Qdrant vector database
+# 3. Proxy Hanna bot services on hanna.example.com
+# 4. Handle TLS/SSL termination
+# 5. Setup CORS for internal services
+#
+# Usage:
+# 1. Replace example.com with your actual domain
+# 2. Update certificate paths to your cert locations
+# 3. Ensure services match your docker-compose network setup
+# 4. Copy to /etc/nginx/conf.d/ or nginx container volume
+
+# HTTP to HTTPS redirect for n8n
+server {
+    listen 80;
+    server_name n8n.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+# HTTPS vhost for n8n workflows
+server {
+    listen 443 ssl http2;
+    server_name n8n.example.com;
+
+    ssl_certificate /etc/nginx/certs/your-domain.pem;
+    ssl_certificate_key /etc/nginx/certs/your-domain-key.key;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Main n8n proxy
+    location / {
+        proxy_pass http://n8n:5678;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Increase timeouts for long-running workflows
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_connect_timeout 10s;
+    }
+
+    # Qdrant vector database proxy
+    location /qdrant/ {
+        proxy_pass http://qdrant:6333/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# HTTP to HTTPS redirect for Hanna services
+server {
+    listen 80;
+    server_name hanna.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+# HTTPS vhost for Hanna bot UI and API
+server {
+    listen 443 ssl http2;
+    server_name hanna.example.com;
+
+    ssl_certificate /etc/nginx/certs/your-domain.pem;
+    ssl_certificate_key /etc/nginx/certs/your-domain-key.key;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # HannaUI - main web interface
+    location / {
+        proxy_pass http://hannaui:80;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Hanna Bot REST API
+    location /api/ {
+        proxy_pass http://hanna-bot:8080/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Proxy to n8n webhook for HannaUI chat integration
+    location /api/n8n/ {
+        proxy_pass http://n8n:5678/webhook/your-webhook-id;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # CORS headers for frontend to backend communication
+        add_header Access-Control-Allow-Origin "https://hanna.example.com" always;
+        add_header Access-Control-Allow-Methods "OPTIONS, GET, POST, PUT, DELETE" always;
+        add_header Access-Control-Allow-Headers "Authorization,Content-Type" always;
+
+        # Handle CORS preflight requests
+        if ($request_method = OPTIONS) {
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+    }
+
+    # Health check endpoint for monitoring
+    location /health {
+        proxy_pass http://hanna-bot:8080/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+}
+
+# Internal HTTP vhost (optional - for internal-only access without TLS)
+# Useful for development or internal service-to-service communication
+server {
+    listen 80;
+    server_name hanna.internal.local;
+
+    # HannaUI proxy
+    location / {
+        proxy_pass http://hannaui:80;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Hanna Bot API
+    location /api/ {
+        proxy_pass http://hanna-bot:8080/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # n8n webhook for chat
+    location /api/n8n/ {
+        proxy_pass http://n8n:5678/webhook/your-webhook-id;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+
+        # CORS for internal development
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "OPTIONS, GET, POST, PUT, DELETE" always;
+        add_header Access-Control-Allow-Headers "Authorization,Content-Type" always;
+
+        if ($request_method = OPTIONS) {
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+    }
+
+    # Health check
+    location /health {
+        proxy_pass http://hanna-bot:8080/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+}
+
+# Notes:
+# ------
+# 1. Certificate paths: Update to your actual certificate locations
+#    - /etc/nginx/certs/your-domain.pem (or fullchain.pem for Let's Encrypt)
+#    - /etc/nginx/certs/your-domain-key.key (or privkey.pem for Let's Encrypt)
+#
+# 2. Hostnames: Replace example.com with your actual domain
+#    - n8n.example.com → Your n8n workflows UI
+#    - hanna.example.com → Your Hanna bot UI
+#
+# 3. Webhook ID: Replace your-webhook-id with actual n8n webhook from HannaUI adapter workflow
+#
+# 4. Internal hostname: Replace hanna.internal.local with your internal DNS
+#
+# 5. For Docker Compose:
+#    - Service names (n8n, qdrant, hannaui, hanna-bot) must match docker-compose.yml
+#    - Ensure services are on the same Docker network (e.g., n8n_network)
+#
+# 6. SSL/TLS Best Practices:
+#    - Use Let's Encrypt for automated certificate renewal
+#    - Set up certbot with nginx plugin for auto-renewal
+#    - Test with: openssl s_client -connect n8n.example.com:443
+#
+# 7. Performance Tuning:
+#    - Adjust proxy_read_timeout for workflows that take >600s
+#    - Enable gzip for compression: gzip on; gzip_types application/json;
+#    - Consider adding caching headers for static assets
+#
+# 8. Monitoring:
+#    - Check nginx logs: docker exec nginx tail -f /var/log/nginx/access.log
+#    - Verify upstream health: curl https://n8n.example.com/health
