@@ -24,9 +24,39 @@
    ```
 
 3. **Run:**
-   ```bash
-   python scrape_to_n8n.py
-   ```
+    ```bash
+    python scrape_to_n8n.py
+    ```
+
+## Security Pattern: Templates vs. Production Scripts
+
+HannaIRC uses a standard security pattern for managing local production scripts alongside public documentation:
+
+**How it works:**
+- **Templates in `docs/scrapers/`** (tracked in git, public-safe):
+  - Contain placeholder values (e.g., `https://your-n8n-instance/webhook/your-webhook-id`)
+  - Safely shared and included in public repository
+  - Used as reference for customization
+
+- **Production scripts in project root** (gitignored, local-only):
+  - Your customized copies with real credentials and infrastructure details
+  - Never tracked by git (`.gitignore` prevents accidental commits)
+  - Stay on your local machine only
+
+**Why this design:**
+- Security: Credentials stay local and never reach GitHub
+- Reference: Users have clear templates showing what to customize
+- Simplicity: Copy template, customize values, run locally
+- Consistency: Standard approach used across most production projects
+
+**Your workflow:**
+1. Clone the repository (you get templates from `docs/scrapers/`)
+2. Copy templates to your root directory (step 1 in Installation above)
+3. Edit with your real credentials and infrastructure details
+4. Run locally (your customized scripts are gitignored)
+5. Never commit your customized scripts—`.gitignore` prevents this
+
+This means when you clone HannaIRC, you'll see template scripts in `docs/scrapers/` but not the production scripts in root. After setup, your local production scripts won't appear in git status—they're intentionally ignored.
 
 ## Excluding Domains
 
